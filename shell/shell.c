@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <limits.h>
+#include <setjmp.h>
 
 #define LINE_SIZE 1024
 #define ARGS_SIZE 64
@@ -19,6 +20,14 @@ char hostname[HOST_NAME_MAX] = {'\0'};
 char username[LOGIN_NAME_MAX] = {'\0'};
 char prefix[HOST_NAME_MAX + LOGIN_NAME_MAX] = {'\0'};
 
+sigjmp_buf jump_buffer;
+
+void sig_handler(int sig) {
+	if (sig == SIGINT) {
+		write(STDOUT_FILENO, "\n", 1);
+    siglongjmp(jump_buffer, 1);
+	}
+}
 void free_args(char **args) {
 	for (int i = 0; args[i] != NULL; i++) {
 		free(args[i]);
@@ -145,7 +154,7 @@ void execute(char **args) {
 }
 
 int main() {
-	signal(SIGINT, SIG_IGN);
+	signal(SIGINT, sig_handler);
 
 	if (getcwd(cwd, sizeof(cwd)) == NULL) {
     perror("getcwd");
@@ -162,13 +171,19 @@ int main() {
 		exit(1);
 	};
 
-	if (snprintf(prefix, sizeof(prefix), "%s@%s", username, hostname) == -1) {
+	if (snprintf(prefix, sizeof prefix, "%s@%s", username, hostname) == -1) {
 		perror("snprintf");
 		exit(1);
 	}
 
 	while(1) {
+		if (sigsetjmp(jump_buffer, 1) != 0) {
+			printf("\r");
+		}
+
 		printf("%s %s> ", prefix, cwd);
+		fflush(stdout);
+
 		if (fgets(line, LINE_SIZE, stdin) == NULL) break;
 
 		char **args = process_line(line);
