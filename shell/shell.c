@@ -5,13 +5,26 @@
 #include <glob.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <limits.h>
 
-#define LINE_SIZE 1024 
-#define ARGS_SIZE 64 
+#define LINE_SIZE 1024
+#define ARGS_SIZE 64
 #define PATH_SIZE 512
+#define HOST_NAME_MAX 256
+#define LOGIN_NAME_MAX 512
 
 char line[LINE_SIZE] = {'\0'};
 char cwd[PATH_SIZE] = {'\0'};
+char hostname[HOST_NAME_MAX] = {'\0'};
+char username[LOGIN_NAME_MAX] = {'\0'};
+char prefix[HOST_NAME_MAX + LOGIN_NAME_MAX] = {'\0'};
+
+void free_args(char **args) {
+	for (int i = 0; args[i] != NULL; i++) {
+		free(args[i]);
+	}
+	free(args);
+}
 
 void handle_redirection(char **args) {
 	for (int i = 0; args[i] != NULL; i++) {
@@ -23,7 +36,7 @@ void handle_redirection(char **args) {
 				fprintf(stderr, "shell: parse error near '\\n'\n");
 				exit(1);
 			}
-			 
+
 			if ((fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644)) == -1) {
 				perror("open");
 				exit(1);
@@ -41,7 +54,7 @@ void handle_redirection(char **args) {
 				fprintf(stderr, "shell: parse error near '\\n'\n");
 				exit(1);
 			}
-			
+
 			if ((fd = open(filename, O_RDONLY)) == -1) {
 				perror("open"); 
 				exit(1);
@@ -68,12 +81,12 @@ char **process_line(char *line) {
 	tokens[count] = NULL;
 
 	glob_t gstruct;
-	int flags = GLOB_NOCHECK | GLOB_TILDE;
-    
-	if (glob(tokens[0], flags, NULL, &gstruct) != 0) return NULL;
+
+	if (glob(tokens[0], GLOB_NOCHECK | GLOB_TILDE, NULL, &gstruct) != 0)
+		return NULL;
 
 	for (int i = 1; i < count; i++) {
-		glob(tokens[i], flags | GLOB_APPEND, NULL, &gstruct);
+		glob(tokens[i], GLOB_NOCHECK | GLOB_TILDE | GLOB_APPEND, NULL, &gstruct);
 	}
 
 	char **args = malloc((gstruct.gl_pathc + 1) * sizeof(char *));
@@ -139,19 +152,30 @@ int main() {
     exit(1);
 	}
 
+	if (gethostname(hostname, HOST_NAME_MAX) == -1) {
+		perror("gethostname");
+		exit(1);
+	};
+
+	if (getlogin_r(username, LOGIN_NAME_MAX) == -1) {
+		perror("gethostname");
+		exit(1);
+	};
+
+	if (snprintf(prefix, sizeof(prefix), "%s@%s", username, hostname) == -1) {
+		perror("snprintf");
+		exit(1);
+	}
+
 	while(1) {
-		printf("%s> ", cwd);
+		printf("%s %s> ", prefix, cwd);
 		if (fgets(line, LINE_SIZE, stdin) == NULL) break;
 
 		char **args = process_line(line);
 
 		if (args != NULL) {
 			execute(args);
-
-			for (int i = 0; args[i] != NULL; i++) {
-				free(args[i]);
-			}
-			free(args);
+			free_args(args);
 		}
 	}
 
