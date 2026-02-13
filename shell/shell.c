@@ -28,6 +28,31 @@ void sig_handler(int sig) {
     siglongjmp(jump_buffer, 1);
 	}
 }
+
+void init() {
+	signal(SIGINT, sig_handler);
+
+	if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    perror("getcwd");
+    exit(1);
+	}
+
+	if (gethostname(hostname, HOST_NAME_MAX) == -1) {
+		perror("gethostname");
+		exit(1);
+	};
+
+	if (getlogin_r(username, LOGIN_NAME_MAX) == -1) {
+		perror("gethostname");
+		exit(1);
+	};
+
+	if (snprintf(prefix, sizeof prefix, "%s@%s", username, hostname) == -1) {
+		perror("snprintf");
+		exit(1);
+	}
+}
+
 void free_args(char **args) {
 	for (int i = 0; args[i] != NULL; i++) {
 		free(args[i]);
@@ -126,7 +151,7 @@ void execute(char **args) {
 	pid_t pid;
 	int status;
 
-	if (!strcmp("quit", args[0])) {
+	if ((!strcmp("quit", args[0])) || (!strcmp("exit", args[0]))) {
 		printf("Goodbye\n");
 		exit(0);
 	}
@@ -141,7 +166,7 @@ void execute(char **args) {
 		exit(1);
 	}
 	else if (pid == 0) {
-		signal(SIGINT, SIG_DFL);
+		signal(SIGINT, SIG_DFL); // child process doesn't use sig_handler
 
 		handle_redirection(args);
 		if (execvp(args[0], args) == -1) {
@@ -154,27 +179,7 @@ void execute(char **args) {
 }
 
 int main() {
-	signal(SIGINT, sig_handler);
-
-	if (getcwd(cwd, sizeof(cwd)) == NULL) {
-    perror("getcwd");
-    exit(1);
-	}
-
-	if (gethostname(hostname, HOST_NAME_MAX) == -1) {
-		perror("gethostname");
-		exit(1);
-	};
-
-	if (getlogin_r(username, LOGIN_NAME_MAX) == -1) {
-		perror("gethostname");
-		exit(1);
-	};
-
-	if (snprintf(prefix, sizeof prefix, "%s@%s", username, hostname) == -1) {
-		perror("snprintf");
-		exit(1);
-	}
+	init();
 
 	while(1) {
 		if (sigsetjmp(jump_buffer, 1) != 0) {
